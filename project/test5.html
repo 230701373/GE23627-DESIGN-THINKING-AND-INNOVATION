@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Detection Project</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 1200px;
+            position: relative;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        #logo {
+            height: 50px;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        .chart-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        canvas {
+            margin-top: 20px;
+            max-width: 400px;
+            width: 100%;
+        }
+        #stressIndicator {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="logo.png" alt="Logo" id="logo">
+        <h1>Emotion Detection Project</h1>
+        <p id="datetime"></p>
+        <div class="chart-container">
+            <canvas id="combinedChart"></canvas>
+            <canvas id="emotionPieChart"></canvas>
+        </div>
+        <p id="stressIndicator">Stress Level: Analyzing...</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Temperature (°C)</th>
+                    <th>Sweat Level</th>
+                    <th>Acceleration (Avg)</th>
+                    <th>Emotion</th>
+                </tr>
+            </thead>
+            <tbody id="dataTable">
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const channelID = '2883589';
+        const readAPIKey = 'N4MZBTKDJU0Q31LC';
+        let emotionData = {"Anxious": 0, "Calm": 0, "Stressed": 0, "Neutral": 0};
+        let timeCounter = 0;
+
+        function classifyEmotion(temperature, sweat, accX, accY, accZ) {
+            if (sweat > 70 && temperature > 38) return "Anxious";
+            if (sweat < 30 && temperature < 36) return "Calm";
+            if (accX > 5 || accY > 5 || accZ > 5) return "Stressed";
+            return "Neutral";
+        }
+
+        function fetchData() {
+            const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=10`;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    let tempData = [], sweatData = [], accData = [], labels = [];
+                    let latestEmotion = "Neutral";
+                    let tableRows = "";
+                    data.feeds.forEach(entry => {
+                        const temp = parseFloat(entry.field1);
+                        const sweat = parseFloat(entry.field2);
+                        const accX = parseFloat(entry.field3);
+                        const accY = parseFloat(entry.field4);
+                        const accZ = parseFloat(entry.field5);
+                        const emotion = classifyEmotion(temp, sweat, accX, accY, accZ);
+                        emotionData[emotion]++;
+                        latestEmotion = emotion;
+                        labels.push(new Date(entry.created_at).toLocaleTimeString());
+                        tempData.push(temp);
+                        sweatData.push(sweat);
+                        accData.push((accX + accY + accZ) / 3);
+                        tableRows += `<tr><td>${new Date(entry.created_at).toLocaleTimeString()}</td><td>${temp}</td><td>${sweat}</td><td>${((accX + accY + accZ) / 3).toFixed(2)}</td><td>${emotion}</td></tr>`;
+                    });
+                    document.getElementById("dataTable").innerHTML = tableRows;
+                    updateCombinedChart(tempData, sweatData, accData, labels);
+                    document.getElementById("stressIndicator").innerText = `Current Emotion: ${latestEmotion}`;
+                    timeCounter += 10;
+                    if (timeCounter >= 20) {
+                        updatePieChart();
+                        timeCounter = 0;
+                    }
+                })
+                .catch(error => console.error("Error fetching data:", error));
+        }
+
+        function updateCombinedChart(tempData, sweatData, accData, labels) {
+            new Chart(document.getElementById('combinedChart'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Temperature (°C)', data: tempData, borderColor: 'red', fill: false },
+                        { label: 'Sweat Level', data: sweatData, borderColor: 'blue', fill: false },
+                        { label: 'Acceleration (Avg)', data: accData, borderColor: 'green', fill: false }
+                    ]
+                },
+                options: { responsive: true }
+            });
+        }
+
+        function updatePieChart() {
+            new Chart(document.getElementById('emotionPieChart'), {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(emotionData),
+                    datasets: [{
+                        data: Object.values(emotionData),
+                        backgroundColor: ['red', 'blue', 'yellow', 'gray']
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+
+        setInterval(fetchData, 10000);
+    </script>
+</body>
+</html>

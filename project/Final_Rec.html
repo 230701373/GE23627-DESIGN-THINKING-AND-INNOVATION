@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Detection Project</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 1200px;
+            position: relative;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        #logo {
+            height: 50px;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 20px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        #searchBar {
+            margin-bottom: 20px;
+            padding: 8px;
+            width: 50%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #downloadBtn {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #downloadBtn:hover {
+            background-color: #45a049;
+        }
+        .indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 5px;
+        }
+        .latest-row {
+            background-color: yellow;
+        }
+        .blink {
+            animation: blink 1s infinite alternate;
+        }
+        @keyframes blink {
+            from { opacity: 1; }
+            to { opacity: 0.3; }
+        }
+        #graphContainer, #mapContainer {
+            position: absolute;
+            top: 20px;
+            width: 250px;
+            height: 125px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+            padding: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        #graphContainer {
+            right: 300px;
+        }
+        #mapContainer {
+            right: 20px;
+        }
+        #chennaiMap {
+            width: 105%;
+            height: 140%;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+        .location-indicator {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: red;
+            border-radius: 50%;
+            top: 45%;
+            left: 65%;
+            animation: pulse 1.5s infinite;
+            z-index: 100;
+        }
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+            }
+            70% {
+                transform: scale(1.3);
+                box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="logo.png" alt="Logo" id="logo">
+        <h1>Emotion Detection Project</h1>
+        <p id="datetime"></p>
+        <input type="text" id="searchBar" placeholder="Search...">
+        <button id="downloadBtn">Download Data</button>
+        <div class="table-container" id="table-container">
+            <table id="data-table">
+                <thead>
+                    <tr>
+                        <th>S.No</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Temperature</th>
+                        <th>Sweat Level</th>
+                        <th>Acc X</th>
+                        <th>Acc Y</th>
+                        <th>Acc Z</th>
+                    </tr>
+                </thead>
+                <tbody id="data-body">
+                    <!-- Data will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+        <div id="graphContainer">
+            <canvas id="dynamicGraph"></canvas>
+        </div>
+        <div id="mapContainer">
+            <div class="location-indicator"></div>
+            <img id="chennaiMap" src="chennai_map.jpg" alt="Chennai Map with T. Nagar Highlighted">
+        </div>
+    </div>
+
+    <script>
+        const channelID = '2883589';
+        const readAPIKey = 'N4MZBTKDJU0Q31LC';
+        let allData = [];
+        let lastFetchedEntry = null;
+
+        // Initialize the graph
+        const ctx = document.getElementById('dynamicGraph').getContext('2d');
+        const dynamicGraph = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature',
+                        data: [],
+                        borderColor: 'red',
+                        fill: false
+                    },
+                    {
+                        label: 'Sweat Level',
+                        data: [],
+                        borderColor: 'blue',
+                        fill: false
+                    },
+                    {
+                        label: 'Acc X',
+                        data: [],
+                        borderColor: 'green',
+                        fill: false
+                    },
+                    {
+                        label: 'Acc Y',
+                        data: [],
+                        borderColor: 'purple',
+                        fill: false
+                    },
+                    {
+                        label: 'Acc Z',
+                        data: [],
+                        borderColor: 'orange',
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        display: false
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        function fetchData() {
+            const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=100`;
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Received data:", data);
+                    if (!data.feeds || data.feeds.length === 0) {
+                        console.log("No feeds data received");
+                        return;
+                    }
+                    const newFeeds = data.feeds;
+
+                    let newDataAdded = false;
+                    newFeeds.forEach(feed => {
+                        if (!lastFetchedEntry || new Date(feed.created_at) > new Date(lastFetchedEntry)) {
+                            allData.push(feed);
+                            newDataAdded = true;
+                        }
+                    });
+
+                    if (newDataAdded) {
+                        lastFetchedEntry = newFeeds[newFeeds.length - 1].created_at;
+                        allData.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                        updateTable();
+                        updateGraph();
+                        updateLocationIndicator();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    document.getElementById('data-body').innerHTML = `<tr><td colspan="8">Error fetching data: ${error.message}</td></tr>`;
+                });
+        }
+
+        function updateTable() {
+            const tableBody = document.getElementById('data-body');
+            tableBody.innerHTML = '';
+
+            if (allData.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="8">No data available</td></tr>';
+                return;
+            }
+
+            allData.forEach((feed, index) => {
+                const date = new Date(feed.created_at);
+                
+                // Check if temperature exceeds threshold
+                const tempValue = feed.field1 ? parseFloat(feed.field1) : 0;
+                const tempIndicatorColor = tempValue > 35 ? 'red' : 'green';
+                const tempIndicatorClass = tempValue > 35 ? 'blink' : '';
+                
+                // Check if sweat level exceeds threshold
+                const sweatValue = feed.field2 ? parseFloat(feed.field2) : 0;
+                const sweatIndicatorColor = sweatValue > 60 ? 'red' : 'green';
+                const sweatIndicatorClass = sweatValue > 60 ? 'blink' : '';
+
+                const row = document.createElement('tr');
+                if (index === allData.length - 1) {
+                    row.classList.add('latest-row');
+                }
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${date.toLocaleDateString()}</td>
+                    <td>${date.toLocaleTimeString()}</td>
+                    <td>${feed.field1 || 'N/A'} <span class="indicator ${tempIndicatorClass}" style="background-color:${tempIndicatorColor};"></span></td>
+                    <td>${feed.field2 || 'N/A'} <span class="indicator ${sweatIndicatorClass}" style="background-color:${sweatIndicatorColor};"></span></td>
+                    <td>${feed.field3 || 'N/A'}</td>
+                    <td>${feed.field4 || 'N/A'}</td>
+                    <td>${feed.field5 || 'N/A'}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            autoScroll();
+        }
+
+        function updateGraph() {
+            const latestData = allData.slice(-10);
+            dynamicGraph.data.labels = latestData.map(feed => new Date(feed.created_at).toLocaleTimeString());
+            dynamicGraph.data.datasets[0].data = latestData.map(feed => feed.field1);
+            dynamicGraph.data.datasets[1].data = latestData.map(feed => feed.field2);
+            dynamicGraph.data.datasets[2].data = latestData.map(feed => feed.field3);
+            dynamicGraph.data.datasets[3].data = latestData.map(feed => feed.field4);
+            dynamicGraph.data.datasets[4].data = latestData.map(feed => feed.field5);
+            dynamicGraph.update();
+        }
+
+        function updateLocationIndicator() {
+            const indicator = document.querySelector('.location-indicator');
+            if (allData.length > 0) {
+                const latestData = allData[allData.length - 1];
+                const isStressed = (
+                    parseFloat(latestData.field1) > 35 || 
+                    parseFloat(latestData.field2) > 60
+                );
+                indicator.style.backgroundColor = isStressed ? 'red' : 'green';
+            }
+        }
+
+        function autoScroll() {
+            const container = document.getElementById('table-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateDateTime() {
+            const now = new Date();
+            document.getElementById('datetime').textContent = now.toLocaleString();
+        }
+
+        document.getElementById('searchBar').addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#data-body tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', function() {
+            let csv = 'S.No,Date,Time,Temperature,Sweat Level,Acc X,Acc Y,Acc Z\n';
+            const rows = document.querySelectorAll('#data-body tr');
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const rowData = Array.from(cells).map(cell => {
+                    // Extract just the text without the indicator HTML
+                    const text = cell.textContent.trim();
+                    return text;
+                });
+                csv += rowData.join(',') + '\n';
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'emotion_detection_data.csv';
+            link.click();
+        });
+
+        setInterval(fetchData, 10000);
+        setInterval(updateDateTime, 1000);
+
+        fetchData();
+        updateDateTime();
+    </script>
+</body>
+</html>
